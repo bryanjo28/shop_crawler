@@ -4,22 +4,27 @@ from selenium.webdriver.common.keys import Keys
 import time
 import pandas as pd
 
-# Nama file Excel untuk menyimpan data
-EXCEL_FILE = "lazada_products.xlsx"
+EXCEL_FILE = "lazada_scrapping.xlsx"
 
-# Setup ChromeDriver
+keywords = [
+    "Mesin EDC BCA",
+    "Kertas struk thermal BCA",
+    "Adaptor mesin EDC BCA",
+    "Charger mesin EDC BCA",
+    "Kertas struk EDC BCA",
+    "Kertas struk kasir BCA",
+    "Roll kertas kasir BCA",
+    "Struk thermal BC4",
+]
+
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--log-level=3")  # Kurangi log yang tidak perlu
+chrome_options.add_argument("--log-level=3")
 driver = webdriver.Chrome(options=chrome_options)
 
-# List untuk menyimpan hasil scraping
-results = []
-
 def scroll_down():
-    """Fungsi untuk melakukan scroll ke bawah agar pagination terlihat"""
     last_height = driver.execute_script("return document.body.scrollHeight")
-    for _ in range(3):  # Scroll beberapa kali untuk memastikan elemen termuat
+    for _ in range(3):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(2)
         new_height = driver.execute_script("return document.body.scrollHeight")
@@ -27,103 +32,85 @@ def scroll_down():
             break
         last_height = new_height
 
-def scrape_page():
-    """Fungsi untuk scrape semua produk di halaman saat ini"""
+def scrape_page(results):
     time.sleep(5)
-    scroll_down()  # Scroll ke bawah sebelum mengambil data
-
+    scroll_down()
     products = driver.find_elements(By.CLASS_NAME, "Bm3ON")
     print(f"🔍 Ditemukan {len(products)} produk di halaman ini.")
-
     for product in products:
         try:
-            # Nama produk
             product_name = product.find_element(By.CLASS_NAME, "RfADt").text
-
-            # Harga produk
             product_price = product.find_element(By.CLASS_NAME, "ooOxS").text
-
-            # Jumlah terjual
             try:
                 sold_count = product.find_element(By.CLASS_NAME, "_1cEkb").text
             except:
                 sold_count = "N/A"
-
-            # Rating
             try:
                 rating = product.find_element(By.CLASS_NAME, "qzqFw").text
             except:
                 rating = "N/A"
-
-            # Lokasi penjual
             try:
                 location = product.find_element(By.CLASS_NAME, "oa6ri").text
             except:
                 location = "N/A"
-
-            # Link produk
             product_link = product.find_element(By.TAG_NAME, "a").get_attribute("href")
 
-           
-
-            # Simpan ke list results
             results.append({
                 "Nama Produk": product_name,
                 "Harga": product_price,
                 "Terjual": sold_count,
                 "Rating": rating,
                 "Lokasi": location,
-                "Link Produk": product_link,
+                "Link Produk": product_link
             })
 
         except Exception as e:
             print(f"⚠️ Gagal mengambil data dari produk: {e}")
 
 def go_to_next_page():
-    """Fungsi untuk pindah ke halaman berikutnya jika tombol Next tersedia"""
     try:
-        scroll_down()  # Pastikan tombol pagination terlihat
+        scroll_down()
         next_button = driver.find_element(By.CLASS_NAME, "ant-pagination-next")
-
         if "ant-pagination-disabled" in next_button.get_attribute("class"):
             print("🚫 Tidak ada halaman berikutnya.")
             return False
-
         driver.execute_script("arguments[0].click();", next_button)
         print("➡️ Berpindah ke halaman berikutnya...")
-        time.sleep(5)  # Tunggu halaman baru termuat
+        time.sleep(5)
         return True
-    
     except Exception:
         print("🚫 Tidak ada halaman berikutnya.")
         return False
 
 try:
-    # 1️⃣ Buka Lazada
-    driver.get("https://www.lazada.co.id/")
-    time.sleep(5)
+    all_results_by_keyword = {}
 
-    # 2️⃣ Cari search box
-    search_box = driver.find_element(By.ID, "q")
-    keyword = input("Masukkan kata kunci pencarian: ")
-    search_box.send_keys(keyword)
-    search_box.send_keys(Keys.RETURN)
-    time.sleep(5)  # Tunggu hasil pencarian
+    for keyword in keywords:
+        print(f"\n🔎 Mulai pencarian untuk keyword: {keyword}")
+        driver.get("https://www.lazada.co.id/")
+        time.sleep(5)
+        search_box = driver.find_element(By.ID, "q")
+        search_box.clear()
+        search_box.send_keys(keyword)
+        search_box.send_keys(Keys.RETURN)
+        time.sleep(5)
 
-    # 3️⃣ Looping scraping hingga tidak ada pagination
-    while True:
-        scrape_page()  # Ambil data dari halaman saat ini
+        results = []
+        while True:
+            scrape_page(results)
+            if not go_to_next_page():
+                break
 
-        # 4️⃣ Simpan ke Excel setiap halaman
-        df = pd.DataFrame(results)
-        df.to_excel(EXCEL_FILE, index=False)
-        print(f"✅ Data berhasil disimpan ke '{EXCEL_FILE}'.")
+        all_results_by_keyword[keyword] = results
 
-        # 5️⃣ Cek apakah ada halaman berikutnya
-        if not go_to_next_page():
-            break  # Jika tidak ada pagination, hentikan loop
+    # Save ke Excel dengan sheet per keyword
+    with pd.ExcelWriter(EXCEL_FILE, engine="openpyxl") as writer:
+        for keyword, data in all_results_by_keyword.items():
+            df = pd.DataFrame(data)
+            sheet_name = keyword[:31]  # Batas nama sheet Excel = 31 karakter
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    print("🎉 Semua data berhasil dikumpulkan dan disimpan!")
+    print(f"\n✅ Semua data berhasil disimpan ke '{EXCEL_FILE}' dalam sheet per keyword!")
 
 finally:
-    driver.quit()  # Tutup browser setelah selesai
+    driver.quit()

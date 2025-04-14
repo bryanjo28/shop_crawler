@@ -7,6 +7,20 @@ import pandas as pd
 
 EXCEL_FILE = "tokped_scrapping.xlsx"
 
+# 🔍 Daftar kata kunci pencarian
+keywords = [
+    "Mesin EDC BCA",
+    "Kertas struk thermal BCA",
+    "Adaptor mesin EDC BCA",
+    "Charger mesin EDC BCA",
+    "Kertas thermal 57x40mm logo BCA",
+    "Kertas struk EDC BCA",
+    "Kertas struk kasir BCA",
+    "Roll kertas kasir BCA",
+    "Struk thermal BC4",
+    "Mesin kasir BCA"
+]
+
 def scroll_down(driver):
     """Fungsi untuk scroll ke bawah secara bertahap."""
     last_height = driver.execute_script("return document.body.scrollHeight")
@@ -20,7 +34,7 @@ def scroll_down(driver):
             break  # Jika tidak ada perubahan tinggi halaman, hentikan scroll
         last_height = new_height
 
-def scrape_page(driver, results):
+def scrape_page(driver, results, keyword):
     """Fungsi untuk scrape produk di halaman saat ini."""
     try:
         time.sleep(5)
@@ -102,11 +116,15 @@ def scrape_page(driver, results):
         print(f"❌ Gagal mengambil data halaman: {e}")
         return False
 
-def save_to_excel(results):
-    """Fungsi untuk menyimpan data ke Excel."""
-    df = pd.DataFrame(results)
-    df.to_excel(EXCEL_FILE, index=False)
-    print(f"✅ Data berhasil disimpan ke '{EXCEL_FILE}'.")
+def save_to_excel(all_results_by_keyword):
+    """Simpan data ke satu Excel file dengan setiap keyword di sheet terpisah."""
+    with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
+        for keyword, data in all_results_by_keyword.items():
+            df = pd.DataFrame(data)
+            sheet_name = keyword[:31]  # Nama sheet max 31 karakter
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    print(f"✅ Semua data berhasil disimpan ke file '{EXCEL_FILE}' dalam sheet terpisah.")
+
 
 def go_to_next_page(driver):
     """Fungsi untuk berpindah ke halaman berikutnya jika tersedia."""
@@ -130,31 +148,33 @@ def go_to_next_page(driver):
 
 def main():
     chrome_options = Options()
-    chrome_options.add_argument("--log-level=3")  # Minimalkan log ChromeDriver
-    
+    chrome_options.add_argument("--log-level=3")
     driver = webdriver.Chrome(options=chrome_options)
-    
-    results = []
+
+    all_results_by_keyword = {}  # Dictionary {keyword: list of results}
 
     try:
-        driver.get("https://www.tokopedia.com/")
-        time.sleep(3)
-        
-        search_box = driver.find_element(By.CSS_SELECTOR, "input.css-3017qm.exxxdg63")
-        
-        keyword_search = input("Enter keyword: ")
-        search_box.send_keys(keyword_search)
-        search_box.send_keys(Keys.RETURN)
-        
-        while True:
-            success = scrape_page(driver, results)
-            
-            if success:
-                save_to_excel(results)
-            
-            if not go_to_next_page(driver):
-                break
+        for keyword in keywords:
+            print(f"\n🔎 Memulai pencarian untuk: {keyword}")
+            driver.get("https://www.tokopedia.com/")
+            time.sleep(3)
 
+            search_box = driver.find_element(By.CSS_SELECTOR, "input[aria-label='Cari di Tokopedia']")
+            search_box.clear()
+            search_box.send_keys(keyword)
+            search_box.send_keys(Keys.RETURN)
+            time.sleep(3)
+
+            results = []
+
+            while True:
+                success = scrape_page(driver, results, keyword)
+                if not go_to_next_page(driver):
+                    break
+
+            all_results_by_keyword[keyword] = results
+
+        save_to_excel(all_results_by_keyword)
         print("🎉 Semua data berhasil dikumpulkan dan disimpan!")
 
     finally:
