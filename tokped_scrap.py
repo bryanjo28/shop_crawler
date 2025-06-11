@@ -5,7 +5,7 @@ from selenium.webdriver.chrome.options import Options
 import time
 import pandas as pd
 
-EXCEL_FILE = "tokped_scrapping.xlsx"
+EXCEL_FILE = "tokped_scrapping2605.xlsx"
 
 # 🔍 Daftar kata kunci pencarian
 keywords = [
